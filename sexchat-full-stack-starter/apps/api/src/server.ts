@@ -42,5 +42,4 @@ io.on('connection', socket => {
     code: 'NOT_CONFIGURED', message: 'Chat real ainda não está ativado.'
   }));
 });
-const port = Number(process.env.API_PORT || 4000);
-server.listen(port, () => console.log(`Sexchat API listening on port ${port}`));
+const port = Number(process.env.PORT || process.env.API_PORT || 4000);
