@@ -1,0 +1,12 @@
+# Checklist de segurança
+- HTTPS, cookies HttpOnly/Secure/SameSite e CORS restrito ao domínio.
+- MFA obrigatório para administradores; autenticação madura e recuperação de conta.
+- Autorização no servidor em cada rota; rate limit, validação de entrada e proteção CSRF quando aplicável.
+- Nunca expor segredos LiveKit/pagamentos ao navegador.
+- Webhooks assinados, timestamp, proteção contra replay e idempotência.
+- Ledger financeiro append-only, operações atômicas, reconciliação e trilha de auditoria.
+- Logs sem senhas, tokens, documentos ou conteúdo íntimo desnecessário.
+- Backups criptografados e teste de restauração; política de retenção mínima.
+- Verificação real de idade; checkbox 18+ não basta. Verificar identidade e consentimento de criadores/participantes.
+- Denúncia, bloqueio, moderação e resposta rápida. Nunca permitir menores, material não consensual ou publicação sem autorização.
+- Revisão de segurança independente e jurídica antes de produção.

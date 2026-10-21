@@ -1,0 +1,123 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+enum UserRole { USER CREATOR MODERATOR ADMIN }
+enum AccountStatus { PENDING ACTIVE SUSPENDED CLOSED }
+enum VerificationStatus { NOT_STARTED PENDING VERIFIED REJECTED EXPIRED }
+enum RoomStatus { SCHEDULED LIVE ENDED SUSPENDED }
+enum LedgerEntryType { PURCHASE TIP SUBSCRIPTION REFUND CREATOR_EARNING PAYOUT ADJUSTMENT }
+enum ReportStatus { OPEN REVIEWING ACTIONED DISMISSED }
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  passwordHash String?
+  displayName String
+  role UserRole @default(USER)
+  status AccountStatus @default(PENDING)
+  ageVerification VerificationStatus @default(NOT_STARTED)
+  identityVerification VerificationStatus @default(NOT_STARTED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  profile CreatorProfile?
+  rooms LiveRoom[] @relation("RoomCreator")
+  ledgerEntries LedgerEntry[]
+  subscriptions Subscription[] @relation("Subscriber")
+  creatorSubscriptions Subscription[] @relation("SubscribedCreator")
+  reportsFiled Report[] @relation("Reporter")
+  auditEvents AuditEvent[] @relation("Actor")
+}
+model CreatorProfile {
+  id String @id @default(cuid())
+  userId String @unique
+  bio String? @db.VarChar(1000)
+  avatarUrl String?
+  payoutStatus String @default("NOT_CONFIGURED")
+  termsAcceptedAt DateTime?
+  consentReviewAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+model LiveRoom {
+  id String @id @default(cuid())
+  creatorId String
+  title String @db.VarChar(160)
+  status RoomStatus @default(SCHEDULED)
+  providerRoomId String? @unique
+  isPrivate Boolean @default(false)
+  startedAt DateTime?
+  endedAt DateTime?
+  createdAt DateTime @default(now())
+  creator User @relation("RoomCreator", fields: [creatorId], references: [id])
+  messages ChatMessage[]
+  reports Report[]
+}
+model ChatMessage {
+  id String @id @default(cuid())
+  roomId String
+  senderId String
+  body String @db.VarChar(2000)
+  createdAt DateTime @default(now())
+  moderatedAt DateTime?
+  room LiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  @@index([roomId, createdAt])
+}
+model Wallet {
+  id String @id @default(cuid())
+  userId String @unique
+  currency String @default("COIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+model LedgerEntry {
+  id String @id @default(cuid())
+  userId String
+  type LedgerEntryType
+  amount BigInt
+  currency String @default("COIN")
+  idempotencyKey String @unique
+  relatedUserId String?
+  providerReference String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
+}
+model Subscription {
+  id String @id @default(cuid())
+  subscriberId String
+  creatorId String
+  providerSubscriptionId String? @unique
+  status String @default("PENDING")
+  startsAt DateTime?
+  endsAt DateTime?
+  createdAt DateTime @default(now())
+  subscriber User @relation("Subscriber", fields: [subscriberId], references: [id])
+  creator User @relation("SubscribedCreator", fields: [creatorId], references: [id])
+  @@index([subscriberId, status])
+}
+model Report {
+  id String @id @default(cuid())
+  reporterId String
+  roomId String?
+  reason String @db.VarChar(100)
+  details String? @db.VarChar(2000)
+  status ReportStatus @default(OPEN)
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+  reporter User @relation("Reporter", fields: [reporterId], references: [id])
+  room LiveRoom? @relation(fields: [roomId], references: [id])
+  @@index([status, createdAt])
+}
+model AuditEvent {
+  id String @id @default(cuid())
+  actorId String?
+  action String
+  targetType String?
+  targetId String?
+  ipHash String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  actor User? @relation("Actor", fields: [actorId], references: [id])
+  @@index([actorId, createdAt])
+}
