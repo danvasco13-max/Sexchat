@@ -38,4 +38,6 @@ jobs:
 
       - name: Compilar TypeScript
         run: npx tsc --noEmit
+              - name: Conferir modelos do Prisma Client
+        run: node -e "const p = require('@prisma/client'); console.log(Object.keys(p).filter(k => k.toLowerCase().includes('direct')))"
 
