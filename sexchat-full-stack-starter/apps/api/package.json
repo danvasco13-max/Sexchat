@@ -5,6 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+  "dev": "tsx watch src/server.ts",
+  "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
+  "start": "node dist/server.js",
+  "postinstall": "prisma generate --schema=../../prisma/schema.prisma",
+  "db:push": "prisma db push --schema=../../prisma/schema.prisma"
+}
+
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
     "start": "node dist/server.js",
