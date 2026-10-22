@@ -1,26 +1,22 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 enum UserRole {
   USER
   CREATOR
   MODERATOR
   ADMIN
 }
-
 enum AccountStatus {
   PENDING
   ACTIVE
   SUSPENDED
   CLOSED
 }
-
 enum VerificationStatus {
   NOT_STARTED
   PENDING
@@ -28,14 +24,12 @@ enum VerificationStatus {
   REJECTED
   EXPIRED
 }
-
 enum RoomStatus {
   SCHEDULED
   LIVE
   ENDED
   SUSPENDED
 }
-
 enum LedgerEntryType {
   PURCHASE
   TIP
@@ -45,14 +39,12 @@ enum LedgerEntryType {
   PAYOUT
   ADJUSTMENT
 }
-
 enum ReportStatus {
   OPEN
   REVIEWING
   ACTIONED
   DISMISSED
 }
-
 model User {
   id                    String             @id @default(cuid())
   email                 String             @unique
@@ -72,7 +64,6 @@ model User {
   reportsFiled          Report[]           @relation("Reporter")
   auditEvents           AuditEvent[]       @relation("Actor")
 }
-
 model CreatorProfile {
   id               String   @id @default(cuid())
   userId           String   @unique
@@ -84,7 +75,6 @@ model CreatorProfile {
   createdAt        DateTime @default(now())
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-
 model LiveRoom {
   id             String        @id @default(cuid())
   creatorId      String
@@ -99,7 +89,6 @@ model LiveRoom {
   messages       ChatMessage[]
   reports        Report[]
 }
-
 model ChatMessage {
   id          String   @id @default(cuid())
   roomId      String
@@ -108,10 +97,8 @@ model ChatMessage {
   createdAt   DateTime @default(now())
   moderatedAt DateTime?
   room        LiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-
-  @@index([roomId, createdAt])
+ @@index([roomId, createdAt])
 }
-
 model Wallet {
   id        String   @id @default(cuid())
   userId    String   @unique
@@ -119,7 +106,6 @@ model Wallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
 model LedgerEntry {
   id               String          @id @default(cuid())
   userId           String
@@ -132,10 +118,8 @@ model LedgerEntry {
   metadata         Json?
   createdAt        DateTime        @default(now())
   user             User            @relation(fields: [userId], references: [id])
-
-  @@index([userId, createdAt])
+ @@index([userId, createdAt])
 }
-
 model Subscription {
   id                     String   @id @default(cuid())
   subscriberId           String
@@ -147,10 +131,8 @@ model Subscription {
   createdAt              DateTime @default(now())
   subscriber             User     @relation("Subscriber", fields: [subscriberId], references: [id])
   creator                User     @relation("SubscribedCreator", fields: [creatorId], references: [id])
-
-  @@index([subscriberId, status])
+ @@index([subscriberId, status])
 }
-
 model Report {
   id         String       @id @default(cuid())
   reporterId String
@@ -162,10 +144,8 @@ model Report {
   resolvedAt DateTime?
   reporter   User         @relation("Reporter", fields: [reporterId], references: [id])
   room       LiveRoom?    @relation(fields: [roomId], references: [id])
-
   @@index([status, createdAt])
 }
-
 model AuditEvent {
   id         String   @id @default(cuid())
   actorId    String?
@@ -176,7 +156,5 @@ model AuditEvent {
   metadata   Json?
   createdAt  DateTime @default(now())
   actor      User?    @relation("Actor", fields: [actorId], references: [id])
-
-  @@index([actorId, createdAt])
+ @@index([actorId, createdAt])
 }
-
