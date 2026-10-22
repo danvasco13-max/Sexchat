@@ -1,1 +1,34 @@
 
+name: Validar Sexchat
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "sexchat-full-stack-starter/prisma/schema.prisma"
+      - "sexchat-full-stack-starter/apps/api/**"
+      - ".github/workflows/validar.yml"
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: sexchat-full-stack-starter/apps/api
+
+    steps:
+      - name: Baixar o projeto
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Validar esquema do banco
+        run: npx prisma validate --schema=../../prisma/schema.prisma
+
