@@ -4,18 +4,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  
-"scripts": {
-  "dev": "tsx watch src/server.ts",
-  "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
-  "start": "node dist/server.js",
-  "postinstall": "prisma generate --schema=../../prisma/schema.prisma"
-}
-
+  "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
     "start": "node dist/server.js",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate --schema=../../prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -38,3 +31,4 @@
     "typescript": "^5.8.3"
   }
 }
+
