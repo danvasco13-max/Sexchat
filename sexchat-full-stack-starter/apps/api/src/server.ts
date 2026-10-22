@@ -27,9 +27,41 @@ app.post('/v1/rooms', (req, res) => {
   return res.status(501).json({ error: 'NOT_CONFIGURED', message: 'Implemente autenticação, verificação 18+, permissão de criador e banco de dados.', validated: result.data });
 });
 const io = new Server(server, { cors: { origin, credentials: true }, maxHttpBufferSize: 16 * 1024 });
-io.use((_socket, next) => {
-  if (process.env.NODE_ENV === 'production') return next(new Error('Autenticação do chat não configurada.'));
-  next();
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    const secret = process.env.JWT_SECRET;
+
+    if (typeof token !== 'string' || !secret) {
+      return next(new Error('Faça login para acessar o chat.'));
+    }
+
+    const payload = jwt.verify(token, secret);
+
+    if (typeof payload === 'string' || !payload.sub) {
+      return next(new Error('Token inválido.'));
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        displayName: true,
+        status: true
+      }
+    });
+
+    if (!user || user.status === 'SUSPENDED' || user.status === 'CLOSED') {
+      return next(new Error('Conta não autorizada para o chat.'));
+    }
+
+    socket.data.userId = user.id;
+    socket.data.displayName = user.displayName;
+
+    next();
+  } catch {
+    next(new Error('Token inválido ou expirado. Faça login novamente.'));
+  }
 });
 io.on('connection', socket => {
   socket.on('room:join', (id: unknown) => {
