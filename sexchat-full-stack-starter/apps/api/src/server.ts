@@ -63,13 +63,66 @@ io.use(async (socket, next) => {
     next(new Error('Token inválido ou expirado. Faça login novamente.'));
   }
 });
+
 io.on('connection', socket => {
   socket.on('room:join', (id: unknown) => {
-    if (typeof id === 'string' && id.length > 0 && id.length <= 100) socket.join(id);
+    if (
+      typeof id === 'string' &&
+      id.length > 0 &&
+      id.length <= 100
+    ) {
+      socket.join(id);
+    }
   });
-  socket.on('chat:send', () => socket.emit('chat:error', {
-    code: 'NOT_CONFIGURED', message: 'Chat real ainda não está ativado.'
-  }));
+
+  socket.on('chat:send', (data: unknown) => {
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('roomId' in data) ||
+      !('message' in data)
+    ) {
+      socket.emit('chat:error', {
+        code: 'INVALID_INPUT',
+        message: 'Mensagem inválida.'
+      });
+      return;
+    }
+
+    const { roomId, message } = data;
+
+    if (
+      typeof roomId !== 'string' ||
+      roomId.length === 0 ||
+      roomId.length > 100 ||
+      typeof message !== 'string' ||
+      message.trim().length === 0 ||
+      message.length > 2000
+    ) {
+      socket.emit('chat:error', {
+        code: 'INVALID_INPUT',
+        message: 'A mensagem deve ter entre 1 e 2000 caracteres.'
+      });
+      return;
+    }
+
+    if (!socket.rooms.has(roomId)) {
+      socket.emit('chat:error', {
+        code: 'NOT_IN_ROOM',
+        message: 'Entre na conversa antes de enviar mensagens.'
+      });
+      return;
+    }
+
+    io.to(roomId).emit('chat:message', {
+      roomId,
+      senderId: socket.data.userId,
+      senderName: socket.data.displayName,
+      message: message.trim(),
+      sentAt: new Date().toISOString()
+    });
+  });
 });
+
 const port = Number(process.env.PORT || process.env.API_PORT || 4000);
 server.listen(port, () => console.log(`Sexchat API listening on port ${port}`));
