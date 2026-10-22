@@ -64,7 +64,152 @@ io.use(async (socket, next) => {
   }
 });
 
+
 io.on('connection', socket => {
+  socket.on('direct:join', async (conversationId: unknown) => {
+    if (
+      typeof conversationId !== 'string' ||
+      conversationId.length === 0 ||
+      conversationId.length > 100
+    ) {
+      socket.emit('chat:error', {
+        code: 'INVALID_INPUT',
+        message: 'Conversa inválida.'
+      });
+      return;
+    }
+
+    try {
+      const conversation = await prisma.directConversation.findFirst({
+        where: {
+          id: conversationId,
+          OR: [
+            { userOneId: socket.data.userId },
+            { userTwoId: socket.data.userId }
+          ]
+        }
+      });
+
+      if (!conversation) {
+        socket.emit('chat:error', {
+          code: 'FORBIDDEN',
+          message: 'Você não tem acesso a esta conversa.'
+        });
+        return;
+      }
+
+      const room = `direct:${conversation.id}`;
+      socket.join(room);
+
+      const messages = await prisma.directMessage.findMany({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: 'asc' },
+        take: 100,
+        select: {
+          id: true,
+          senderId: true,
+          body: true,
+          createdAt: true
+        }
+      });
+
+      socket.emit('direct:history', messages);
+    } catch {
+      socket.emit('chat:error', {
+        code: 'SERVER_ERROR',
+        message: 'Não foi possível abrir a conversa.'
+      });
+    }
+  });
+
+  socket.on('direct:send', async (data: unknown) => {
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('conversationId' in data) ||
+      !('message' in data)
+    ) {
+      socket.emit('chat:error', {
+        code: 'INVALID_INPUT',
+        message: 'Mensagem inválida.'
+      });
+      return;
+    }
+
+    const { conversationId, message } = data;
+
+    if (
+      typeof conversationId !== 'string' ||
+      typeof message !== 'string' ||
+      message.trim().length === 0 ||
+      message.length > 2000
+    ) {
+      socket.emit('chat:error', {
+        code: 'INVALID_INPUT',
+        message: 'A mensagem deve ter entre 1 e 2000 caracteres.'
+      });
+      return;
+    }
+
+    try {
+      const conversation = await prisma.directConversation.findFirst({
+        where: {
+          id: conversationId,
+          OR: [
+            { userOneId: socket.data.userId },
+            { userTwoId: socket.data.userId }
+          ]
+        }
+      });
+
+      if (!conversation) {
+        socket.emit('chat:error', {
+          code: 'FORBIDDEN',
+          message: 'Você não tem acesso a esta conversa.'
+        });
+        return;
+      }
+
+      const room = `direct:${conversation.id}`;
+
+      if (!socket.rooms.has(room)) {
+        socket.emit('chat:error', {
+          code: 'NOT_IN_CONVERSATION',
+          message: 'Entre na conversa antes de enviar mensagens.'
+        });
+        return;
+      }
+
+      const savedMessage = await prisma.directMessage.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: socket.data.userId,
+          body: message.trim()
+        },
+        select: {
+          id: true,
+          conversationId: true,
+          senderId: true,
+          body: true,
+          createdAt: true
+        }
+      });
+
+      await prisma.directConversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() }
+      });
+
+      io.to(room).emit('direct:message', savedMessage);
+    } catch {
+      socket.emit('chat:error', {
+        code: 'SERVER_ERROR',
+        message: 'Não foi possível enviar a mensagem.'
+      });
+    }
+  });
+});
+
   socket.on('room:join', (id: unknown) => {
     if (
       typeof id === 'string' &&
