@@ -4,7 +4,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {
+  
+"scripts": {
+  "dev": "tsx watch src/server.ts",
+  "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
+  "start": "node dist/server.js",
+  "postinstall": "prisma generate --schema=../../prisma/schema.prisma"
+}
+
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",
