@@ -1,38 +1,84 @@
 
-const features = [
-  {
-    icon: "◉",
-    number: "01",
-    title: "Seu espaço",
-    description:
-      "Uma experiência pensada para perfis, conexões e descoberta de novos criadores.",
-  },
-  {
-    icon: "▣",
-    number: "02",
-    title: "Salas ao vivo",
-    description:
-      "Uma área preparada para futuras experiências de vídeo e interação em tempo real.",
-  },
-  {
-    icon: "✦",
-    number: "03",
-    title: "Apoie criadores",
-    description:
-      "Uma estrutura planejada para assinaturas e apoio aos criadores.",
-  },
-  {
-    icon: "⬡",
-    number: "04",
-    title: "Segurança primeiro",
-    description:
-      "Privacidade, moderação, consentimento e verificação de idade como prioridades.",
-  },
-];
+"use client";
+
+import { useState } from "react";
+
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "https://sexchat-290c.onrender.com"
+).replace(/\/$/, "");
 
 export default function Home() {
+  const [mode, setMode] = useState<"register" | "login">("register");
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [adultConfirmed, setAdultConfirmed] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loggedUser, setLoggedUser] = useState("");
+
+  async function submitForm(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    if (mode === "register" && !adultConfirmed) {
+      setMessage("Confirme que você tem 18 anos ou mais.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API_URL}/v1/auth/${mode === "register" ? "register" : "login"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            mode === "register"
+              ? { displayName, email, password, adultConfirmed }
+              : { email, password }
+          ),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.message || "Não foi possível concluir a operação.");
+        return;
+      }
+
+      if (mode === "register") {
+        setMessage(
+          "Cadastro criado! A verificação de e-mail ainda precisa ser implementada. Você pode tentar entrar."
+        );
+        setMode("login");
+        setPassword("");
+      } else {
+        setLoggedUser(data.user.displayName);
+        setMessage("Login realizado com sucesso!");
+        setPassword("");
+      }
+    } catch {
+      setMessage(
+        "Não foi possível conectar ao servidor. Tente novamente em instantes."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function logout() {
+    setLoggedUser("");
+    setEmail("");
+    setPassword("");
+    setMessage("");
+    setMode("login");
+  }
+
   return (
-    <main className="shell">
+    <main className="shell" id="inicio">
       <header className="topbar">
         <a className="brand" href="#inicio" aria-label="Sexchat início">
           <span className="brand-symbol">S</span>
@@ -44,12 +90,12 @@ export default function Home() {
           PLATAFORMA 18+
         </span>
 
-        <a className="header-link" href="#recursos">
-          Conheça o projeto <span>↗</span>
+        <a className="header-link" href="#conta">
+          Minha conta ↗
         </a>
       </header>
 
-      <section className="hero" id="inicio">
+      <section className="hero">
         <div className="hero-content">
           <div className="eyebrow">
             <span className="live-dot" />
@@ -63,17 +109,16 @@ export default function Home() {
           </h1>
 
           <p className="hero-description">
-            Um espaço digital para conhecer criadores e descobrir novas
-            formas de interação. Uma experiência em desenvolvimento,
-            com privacidade e respeito em primeiro lugar.
+            Conheça criadores e descubra novas formas de interação.
+            Privacidade e respeito em primeiro lugar.
           </p>
 
           <div className="hero-actions">
-            <a className="primary-button" href="#recursos">
-              Explorar plataforma <span>↗</span>
+            <a className="primary-button" href="#conta">
+              Criar minha conta ↗
             </a>
             <a className="secondary-button" href="#sobre">
-              Saiba mais <span>↓</span>
+              Saiba mais ↓
             </a>
           </div>
 
@@ -81,8 +126,6 @@ export default function Home() {
             <span>18+</span>
             <span className="trust-divider" />
             <span>Privacidade e respeito</span>
-            <span className="trust-divider" />
-            <span>Em desenvolvimento</span>
           </div>
         </div>
 
@@ -109,40 +152,160 @@ export default function Home() {
             </span>
           </div>
         </div>
-
-        <div className="hero-index">
-          <span>01</span>
-          <span className="index-line" />
-          <span>SEXCHAT</span>
-        </div>
       </section>
 
-      <section className="features-section" id="recursos">
-        <div className="section-heading">
+      <section
+        id="conta"
+        style={{
+          maxWidth: 460,
+          margin: "40px auto 70px",
+          padding: 28,
+          border: "1px solid rgba(180,140,255,.25)",
+          borderRadius: 20,
+          background: "rgba(25,20,38,.8)",
+          color: "#fff",
+        }}
+      >
+        {loggedUser ? (
           <div>
-            <p className="section-kicker">UM NOVO ESPAÇO DIGITAL</p>
-            <h2>Feito para novas <span>possibilidades.</span></h2>
+            <h2>Olá, {loggedUser}!</h2>
+            <p>Sua sessão foi iniciada.</p>
+            <p>
+              O chat e as demais funções ainda precisam ser implementados.
+            </p>
+            <button className="primary-button" onClick={logout}>
+              Sair da conta
+            </button>
           </div>
-          <p className="section-description">
-            Conheça os pilares planejados para a plataforma.
-          </p>
-        </div>
+        ) : (
+          <>
+            <p className="section-kicker">SUA CONTA SEXCHAT</p>
+            <h2 style={{ marginBottom: 20 }}>
+              {mode === "register" ? "Crie sua conta" : "Bem-vindo de volta"}
+            </h2>
 
-        <div className="feature-grid">
-          {features.map((feature) => (
-            <article className="feature-card" key={feature.number}>
-              <div className="feature-top">
-                <span className="feature-icon">{feature.icon}</span>
-                <span className="feature-number">{feature.number}</span>
-              </div>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-              <span className="feature-status">
-                <span /> EM DESENVOLVIMENTO
-              </span>
-            </article>
-          ))}
-        </div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
+              <button
+                type="button"
+                className={mode === "register" ? "primary-button" : "secondary-button"}
+                onClick={() => {
+                  setMode("register");
+                  setMessage("");
+                }}
+              >
+                Cadastrar
+              </button>
+              <button
+                type="button"
+                className={mode === "login" ? "primary-button" : "secondary-button"}
+                onClick={() => {
+                  setMode("login");
+                  setMessage("");
+                }}
+              >
+                Entrar
+              </button>
+            </div>
+
+            <form onSubmit={submitForm}>
+              {mode === "register" && (
+                <label style={{ display: "block", marginBottom: 15 }}>
+                  Nome de exibição
+                  <input
+                    required
+                    minLength={2}
+                    maxLength={60}
+                    autoComplete="nickname"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Como quer ser chamado?"
+                    style={fieldStyle}
+                  />
+                </label>
+              )}
+
+              <label style={{ display: "block", marginBottom: 15 }}>
+                E-mail
+                <input
+                  required
+                  type="email"
+                  maxLength={254}
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="voce@exemplo.com"
+                  style={fieldStyle}
+                />
+              </label>
+
+              <label style={{ display: "block", marginBottom: 15 }}>
+                Senha
+                <input
+                  required
+                  type="password"
+                  minLength={mode === "register" ? 12 : 1}
+                  maxLength={72}
+                  autoComplete={
+                    mode === "register" ? "new-password" : "current-password"
+                  }
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={
+                    mode === "register"
+                      ? "Mínimo de 12 caracteres"
+                      : "Digite sua senha"
+                  }
+                  style={fieldStyle}
+                />
+              </label>
+
+              {mode === "register" && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    margin: "18px 0",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={adultConfirmed}
+                    onChange={(e) => setAdultConfirmed(e.target.checked)}
+                    required
+                    style={{ marginTop: 5 }}
+                  />
+                  <span>Confirmo que tenho 18 anos ou mais.</span>
+                </label>
+              )}
+
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={loading}
+                style={{ width: "100%", cursor: loading ? "wait" : "pointer" }}
+              >
+                {loading
+                  ? "Aguarde..."
+                  : mode === "register"
+                    ? "Criar conta"
+                    : "Entrar"}
+              </button>
+            </form>
+
+            {message && (
+              <p role="status" aria-live="polite" style={{ marginTop: 18 }}>
+                {message}
+              </p>
+            )}
+
+            <p style={{ fontSize: 12, opacity: 0.75, marginTop: 18 }}>
+              A confirmação de idade é uma declaração e não substitui a
+              verificação de idade. Não use uma senha que você já utiliza
+              em outros serviços.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="about-section" id="sobre">
@@ -151,9 +314,9 @@ export default function Home() {
           <p className="section-kicker">NOSSO COMPROMISSO</p>
           <h2>Respeito não é opcional.</h2>
           <p>
-            A plataforma está em construção. Recursos interativos só serão
-            disponibilizados após a implementação dos controles necessários
-            de segurança, privacidade, verificação de idade e consentimento.
+            A plataforma está em construção. Verificação de idade, confirmação
+            de e-mail, privacidade e controles de segurança precisam estar
+            prontos antes da liberação pública de todos os recursos.
           </p>
         </div>
       </section>
@@ -171,3 +334,17 @@ export default function Home() {
     </main>
   );
 }
+
+const fieldStyle: React.CSSProperties = {
+  display: "block",
+  boxSizing: "border-box",
+  width: "100%",
+  marginTop: 7,
+  padding: "12px 14px",
+  borderRadius: 10,
+  border: "1px solid #514363",
+  background: "#17121f",
+  color: "#fff",
+  fontSize: 16,
+};
+
