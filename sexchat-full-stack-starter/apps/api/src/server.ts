@@ -5,7 +5,7 @@ import cors from 'cors';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { z } from 'zod';
-
+import authRouter from './auth.js';
 const app = express();
 const server = createServer(app);
 const origin = process.env.WEB_ORIGIN || 'http://localhost:3000';
