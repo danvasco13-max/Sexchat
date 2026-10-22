@@ -33,3 +33,9 @@ jobs:
       - name: Validar esquema do banco
         run: npx prisma validate --schema=../../prisma/schema.prisma
 
+      - name: Gerar Prisma Client
+        run: npx prisma generate --schema=../../prisma/schema.prisma
+
+      - name: Compilar TypeScript
+        run: npx tsc --noEmit
+
