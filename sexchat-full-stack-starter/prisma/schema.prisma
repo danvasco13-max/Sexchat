@@ -1,22 +1,27 @@
+
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
 enum UserRole {
   USER
   CREATOR
   MODERATOR
   ADMIN
 }
+
 enum AccountStatus {
   PENDING
   ACTIVE
   SUSPENDED
   CLOSED
 }
+
 enum VerificationStatus {
   NOT_STARTED
   PENDING
@@ -24,12 +29,14 @@ enum VerificationStatus {
   REJECTED
   EXPIRED
 }
+
 enum RoomStatus {
   SCHEDULED
   LIVE
   ENDED
   SUSPENDED
 }
+
 enum LedgerEntryType {
   PURCHASE
   TIP
@@ -39,66 +46,81 @@ enum LedgerEntryType {
   PAYOUT
   ADJUSTMENT
 }
+
 enum ReportStatus {
   OPEN
   REVIEWING
   ACTIONED
   DISMISSED
 }
+
 model User {
-  id                    String             @id @default(cuid())
-  email                 String             @unique
-  passwordHash          String?
-  displayName           String
-  role                  UserRole           @default(USER)
-  status                AccountStatus      @default(PENDING)
-  ageVerification       VerificationStatus @default(NOT_STARTED)
-  identityVerification  VerificationStatus @default(NOT_STARTED)
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  profile               CreatorProfile?
-  rooms                 LiveRoom[]         @relation("RoomCreator")
-  ledgerEntries         LedgerEntry[]
-  subscriptions         Subscription[]     @relation("Subscriber")
-  creatorSubscriptions  Subscription[]     @relation("SubscribedCreator")
-  reportsFiled          Report[]           @relation("Reporter")
-  auditEvents           AuditEvent[]       @relation("Actor")
+  id                   String             @id @default(cuid())
+  email                String             @unique
+  passwordHash         String?
+  displayName          String
+  role                 UserRole           @default(USER)
+  status               AccountStatus      @default(PENDING)
+  ageVerification      VerificationStatus @default(NOT_STARTED)
+  identityVerification VerificationStatus @default(NOT_STARTED)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  profile              CreatorProfile?
+  rooms                LiveRoom[]         @relation("RoomCreator")
+  ledgerEntries        LedgerEntry[]
+  subscriptions        Subscription[]     @relation("Subscriber")
+  creatorSubscriptions Subscription[]     @relation("SubscribedCreator")
+  reportsFiled         Report[]           @relation("Reporter")
+  auditEvents          AuditEvent[]       @relation("Actor")
+
+  conversationsAsUserOne DirectConversation[] @relation("ConversationUserOne")
+  conversationsAsUserTwo DirectConversation[] @relation("ConversationUserTwo")
+  directMessages         DirectMessage[]
 }
+
 model CreatorProfile {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  bio              String?  @db.VarChar(1000)
-  avatarUrl        String?
-  payoutStatus     String   @default("NOT_CONFIGURED")
-  termsAcceptedAt  DateTime?
-  consentReviewAt  DateTime?
-  createdAt        DateTime @default(now())
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  bio             String?  @db.VarChar(1000)
+  avatarUrl       String?
+  payoutStatus    String   @default("NOT_CONFIGURED")
+  termsAcceptedAt DateTime?
+  consentReviewAt DateTime?
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
 model LiveRoom {
-  id             String        @id @default(cuid())
+  id             String     @id @default(cuid())
   creatorId      String
-  title          String        @db.VarChar(160)
-  status         RoomStatus    @default(SCHEDULED)
-  providerRoomId String?       @unique
-  isPrivate      Boolean       @default(false)
+  title          String     @db.VarChar(160)
+  status         RoomStatus @default(SCHEDULED)
+  providerRoomId String?    @unique
+  isPrivate      Boolean    @default(false)
   startedAt      DateTime?
   endedAt        DateTime?
-  createdAt      DateTime      @default(now())
-  creator        User          @relation("RoomCreator", fields: [creatorId], references: [id])
-  messages       ChatMessage[]
-  reports        Report[]
+  createdAt      DateTime   @default(now())
+
+  creator  User          @relation("RoomCreator", fields: [creatorId], references: [id])
+  messages ChatMessage[]
+  reports  Report[]
 }
+
 model ChatMessage {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   roomId      String
   senderId    String
-  body        String   @db.VarChar(2000)
-  createdAt   DateTime @default(now())
+  body        String    @db.VarChar(2000)
+  createdAt   DateTime  @default(now())
   moderatedAt DateTime?
-  room        LiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
- @@index([roomId, createdAt])
+
+  room LiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
 }
+
 model Wallet {
   id        String   @id @default(cuid())
   userId    String   @unique
@@ -106,6 +128,7 @@ model Wallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
 model LedgerEntry {
   id               String          @id @default(cuid())
   userId           String
@@ -117,9 +140,12 @@ model LedgerEntry {
   providerReference String?
   metadata         Json?
   createdAt        DateTime        @default(now())
-  user             User            @relation(fields: [userId], references: [id])
- @@index([userId, createdAt])
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
 }
+
 model Subscription {
   id                     String   @id @default(cuid())
   subscriberId           String
@@ -129,10 +155,13 @@ model Subscription {
   startsAt               DateTime?
   endsAt                 DateTime?
   createdAt              DateTime @default(now())
-  subscriber             User     @relation("Subscriber", fields: [subscriberId], references: [id])
-  creator                User     @relation("SubscribedCreator", fields: [creatorId], references: [id])
- @@index([subscriberId, status])
+
+  subscriber User @relation("Subscriber", fields: [subscriberId], references: [id])
+  creator    User @relation("SubscribedCreator", fields: [creatorId], references: [id])
+
+  @@index([subscriberId, status])
 }
+
 model Report {
   id         String       @id @default(cuid())
   reporterId String
@@ -142,10 +171,13 @@ model Report {
   status     ReportStatus @default(OPEN)
   createdAt  DateTime     @default(now())
   resolvedAt DateTime?
-  reporter   User         @relation("Reporter", fields: [reporterId], references: [id])
-  room       LiveRoom?    @relation(fields: [roomId], references: [id])
+
+  reporter User      @relation("Reporter", fields: [reporterId], references: [id])
+  room     LiveRoom? @relation(fields: [roomId], references: [id])
+
   @@index([status, createdAt])
 }
+
 model AuditEvent {
   id         String   @id @default(cuid())
   actorId    String?
@@ -155,6 +187,37 @@ model AuditEvent {
   ipHash     String?
   metadata   Json?
   createdAt  DateTime @default(now())
-  actor      User?    @relation("Actor", fields: [actorId], references: [id])
- @@index([actorId, createdAt])
+
+  actor User? @relation("Actor", fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt])
+}
+
+model DirectConversation {
+  id        String   @id @default(cuid())
+  userOneId String
+  userTwoId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userOne  User            @relation("ConversationUserOne", fields: [userOneId], references: [id], onDelete: Cascade)
+  userTwo  User            @relation("ConversationUserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
+  messages DirectMessage[]
+
+  @@unique([userOneId, userTwoId])
+  @@index([userOneId, updatedAt])
+  @@index([userTwoId, updatedAt])
+}
+
+model DirectMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  body           String   @db.VarChar(2000)
+  createdAt      DateTime @default(now())
+
+  conversation DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
