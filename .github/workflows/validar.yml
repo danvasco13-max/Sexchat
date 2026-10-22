@@ -12,7 +12,8 @@ on:
 jobs:
   validar:
     runs-on: ubuntu-latest
-
+    env:
+      DATABASE_URL: "postgresql://user:password@localhost:5432/testdb"
     defaults:
       run:
         working-directory: sexchat-full-stack-starter/apps/api
