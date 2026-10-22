@@ -17,12 +17,6 @@ app.get('/health', (_req, res) => res.json({ ok: true, service: 'sexchat-api' })
 app.use('/v1/auth', authRouter);
 // Placeholders seguros: endpoints sensíveis ficam desativados até implementar
 // autenticação, autorização, persistência, verificação e auditoria.
-for (const path of ['/v1/auth/register','/v1/auth/login','/v1/video/token','/v1/payments/checkout','/v1/reports']) {
-  app.post(path, (_req, res) => res.status(501).json({
-    error: 'NOT_CONFIGURED',
-    message: 'Este recurso ainda não está habilitado. Configure e teste as integrações seguras antes de usar.'
-  }));
-}
 const roomInput = z.object({ title: z.string().trim().min(3).max(160), isPrivate: z.boolean().default(false) });
 app.post('/v1/rooms', (req, res) => {
   const result = roomInput.safeParse(req.body);
