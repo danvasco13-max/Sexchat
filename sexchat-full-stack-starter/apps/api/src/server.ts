@@ -9,6 +9,7 @@ import { z } from 'zod';
 import authRouter from './auth.js';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from './generated/prisma/index.js';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 
 const app = express();
 const server = createServer(app);
@@ -27,31 +28,6 @@ app.get('/health', (_req, res) => {
 
 app.use('/v1/auth', authRouter);
 
-// Criação de salas permanece desativada até a implementação
-// completa de autenticação, permissões e verificação de idade.
-const roomInput = z.object({
-  title: z.string().trim().min(3).max(160),
-  isPrivate: z.boolean().default(false)
-});
-
-app.post('/v1/rooms', (req, res) => {
-  const result = roomInput.safeParse(req.body);
-
-  if (!result.success) {
-    return res.status(400).json({
-      error: 'INVALID_INPUT',
-      details: result.error.flatten()
-    });
-  }
-
-  return res.status(501).json({
-    error: 'NOT_CONFIGURED',
-    message:
-      'Implemente autenticação, verificação 18+, permissão de criador e banco de dados.',
-    validated: result.data
-  });
-});
-
 // Autenticação HTTP para conversas privadas.
 async function authenticatedUser(req: express.Request, res: express.Response, next: express.NextFunction) {
   try {
@@ -65,6 +41,94 @@ async function authenticatedUser(req: express.Request, res: express.Response, ne
     next();
   } catch { return res.status(401).json({ message: 'Sessão expirada. Entre novamente.' }); }
 }
+
+// Video requires a separate LiveKit deployment. Credentials never reach the browser.
+const videoConfig = () => {
+  const url = process.env.LIVEKIT_URL;
+  const key = process.env.LIVEKIT_API_KEY;
+  const secret = process.env.LIVEKIT_API_SECRET;
+  if (!url || !key || !secret) return null;
+  return { url, key, secret };
+};
+const roomsInput = z.object({ title: z.string().trim().min(3).max(160) });
+const roomIdInput = z.string().min(1).max(100);
+
+app.get('/v1/rooms', authenticatedUser, async (_req, res) => {
+  try {
+    const rooms = await prisma.liveRoom.findMany({
+      where: { isPrivate: false, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' }, take: 50,
+      select: { id: true, title: true, creatorId: true, startedAt: true,
+        creator: { select: { displayName: true } } }
+    });
+    return res.json(rooms);
+  } catch { return res.status(500).json({ message: 'Não foi possível listar as salas.' }); }
+});
+
+app.post('/v1/rooms', authenticatedUser, async (req, res) => {
+  const parsed = roomsInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Informe um título de 3 a 160 caracteres.' });
+  if (!videoConfig()) return res.status(503).json({ message: 'Serviço de vídeo ainda não configurado.' });
+  try {
+    const creator = await prisma.user.findUnique({ where: { id: res.locals.userId } });
+    if (!creator || !['CREATOR', 'ADMIN'].includes(creator.role) ||
+      creator.status !== 'ACTIVE' || creator.ageVerification !== 'VERIFIED' ||
+      creator.identityVerification !== 'VERIFIED') {
+      return res.status(403).json({ message: 'É necessário ser criador aprovado e ter idade e identidade verificadas.' });
+    }
+    const existing = await prisma.liveRoom.findFirst({ where: { creatorId: creator.id, status: 'LIVE' } });
+    if (existing) return res.status(409).json({ message: 'Encerre sua transmissão atual antes de criar outra.' });
+    const room = await prisma.liveRoom.create({ data: { creatorId: creator.id, title: parsed.data.title,
+      status: 'LIVE', startedAt: new Date(), isPrivate: false } });
+    return res.status(201).json({ id: room.id, title: room.title });
+  } catch { return res.status(500).json({ message: 'Não foi possível criar a transmissão.' }); }
+});
+
+app.post('/v1/rooms/:id/token', authenticatedUser, async (req, res) => {
+  const parsed = roomIdInput.safeParse(req.params.id);
+  if (!parsed.success) return res.status(400).json({ message: 'Sala inválida.' });
+  const config = videoConfig();
+  if (!config) return res.status(503).json({ message: 'Serviço de vídeo ainda não configurado.' });
+  try {
+    const [room, user] = await Promise.all([
+      prisma.liveRoom.findUnique({ where: { id: parsed.data } }),
+      prisma.user.findUnique({ where: { id: res.locals.userId } })
+    ]);
+    if (!room || room.status !== 'LIVE' || room.isPrivate) return res.status(404).json({ message: 'Transmissão indisponível.' });
+    if (!user || user.status !== 'ACTIVE' || user.ageVerification !== 'VERIFIED') {
+      return res.status(403).json({ message: 'Acesso permitido somente para usuários com idade verificada e conta ativa.' });
+    }
+    const isHost = room.creatorId === user.id;
+    if (isHost && (!['CREATOR','ADMIN'].includes(user.role) || user.identityVerification !== 'VERIFIED')) {
+      return res.status(403).json({ message: 'Criador não aprovado.' });
+    }
+    const token = new AccessToken(config.key, config.secret, {
+      identity: user.id, name: user.displayName, ttl: '15m'
+    });
+    token.addGrant({ roomJoin: true, room: `live-${room.id}`, canPublish: isHost,
+      canPublishData: true, canSubscribe: true });
+    return res.json({ token: await token.toJwt(), url: config.url, isHost });
+  } catch { return res.status(500).json({ message: 'Não foi possível acessar a transmissão.' }); }
+});
+
+app.post('/v1/rooms/:id/end', authenticatedUser, async (req, res) => {
+  const parsed = roomIdInput.safeParse(req.params.id);
+  if (!parsed.success) return res.status(400).json({ message: 'Sala inválida.' });
+  try {
+    const room = await prisma.liveRoom.findUnique({ where: { id: parsed.data } });
+    const user = await prisma.user.findUnique({ where: { id: res.locals.userId } });
+    if (!room || !user || (room.creatorId !== user.id && user.role !== 'ADMIN')) {
+      return res.status(403).json({ message: 'Sem permissão para encerrar a transmissão.' });
+    }
+    await prisma.liveRoom.update({ where: { id: room.id }, data: { status: 'ENDED', endedAt: new Date() } });
+    const config = videoConfig();
+    if (config) {
+      try { await new RoomServiceClient(config.url, config.key, config.secret).deleteRoom(`live-${room.id}`); }
+      catch (error) { console.warn('LiveKit room cleanup:', error); }
+    }
+    return res.json({ ok: true });
+  } catch { return res.status(500).json({ message: 'Não foi possível encerrar a transmissão.' }); }
+});
 
 app.get('/v1/chat/users', authenticatedUser, async (req, res) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 60) : '';
