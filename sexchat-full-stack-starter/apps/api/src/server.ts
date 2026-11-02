@@ -8,7 +8,7 @@ import { Server } from 'socket.io';
 import { z } from 'zod';
 import authRouter from './auth.js';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from './generated/prisma/index.js';
 
 const app = express();
 const server = createServer(app);
@@ -50,6 +50,63 @@ app.post('/v1/rooms', (req, res) => {
       'Implemente autenticação, verificação 18+, permissão de criador e banco de dados.',
     validated: result.data
   });
+});
+
+// Autenticação HTTP para conversas privadas.
+async function authenticatedUser(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+    if (!token || !process.env.JWT_SECRET) return res.status(401).json({ message: 'Faça login.' });
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (typeof payload === 'string' || typeof payload.sub !== 'string') return res.status(401).json({ message: 'Sessão inválida.' });
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || user.status === 'SUSPENDED' || user.status === 'CLOSED') return res.status(403).json({ message: 'Conta indisponível.' });
+    res.locals.userId = user.id;
+    next();
+  } catch { return res.status(401).json({ message: 'Sessão expirada. Entre novamente.' }); }
+}
+
+app.get('/v1/chat/users', authenticatedUser, async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 60) : '';
+  if (query.length < 2) return res.json([]);
+  try {
+    const users = await prisma.user.findMany({
+      where: { id: { not: res.locals.userId }, displayName: { contains: query, mode: 'insensitive' }, status: { notIn: ['SUSPENDED', 'CLOSED'] } },
+      select: { id: true, displayName: true }, take: 20
+    });
+    return res.json(users);
+  } catch { return res.status(500).json({ message: 'Não foi possível pesquisar usuários.' }); }
+});
+
+app.get('/v1/chat/conversations', authenticatedUser, async (_req, res) => {
+  try {
+    const id = res.locals.userId as string;
+    const conversations = await prisma.directConversation.findMany({
+      where: { OR: [{ userOneId: id }, { userTwoId: id }] },
+      orderBy: { updatedAt: 'desc' },
+      include: { userOne: { select: { id: true, displayName: true } }, userTwo: { select: { id: true, displayName: true } } },
+      take: 100
+    });
+    return res.json(conversations.map(c => ({ id: c.id, updatedAt: c.updatedAt, other: c.userOneId === id ? c.userTwo : c.userOne })));
+  } catch { return res.status(500).json({ message: 'Não foi possível listar conversas.' }); }
+});
+
+app.post('/v1/chat/conversations', authenticatedUser, async (req, res) => {
+  const parsed = z.object({ otherUserId: z.string().min(1).max(100) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Usuário inválido.' });
+  const self = res.locals.userId as string;
+  const other = parsed.data.otherUserId;
+  if (self === other) return res.status(400).json({ message: 'Escolha outra pessoa.' });
+  try {
+    const user = await prisma.user.findUnique({ where: { id: other }, select: { id: true, displayName: true, status: true } });
+    if (!user || user.status === 'SUSPENDED' || user.status === 'CLOSED') return res.status(404).json({ message: 'Usuário indisponível.' });
+    const [userOneId, userTwoId] = [self, other].sort();
+    const conversation = await prisma.directConversation.upsert({
+      where: { userOneId_userTwoId: { userOneId, userTwoId } },
+      create: { userOneId, userTwoId }, update: {}
+    });
+    return res.json({ id: conversation.id, updatedAt: conversation.updatedAt, other: { id: user.id, displayName: user.displayName } });
+  } catch { return res.status(500).json({ message: 'Não foi possível abrir a conversa.' }); }
 });
 
 const io = new Server(server, {
