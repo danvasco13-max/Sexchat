@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import LiveBroadcast from "./LiveBroadcast";
 
 const API_URL = (
   process.env.NEXT_PUBLIC_API_URL || "https://sexchat-290c.onrender.com"
@@ -264,6 +265,7 @@ export default function Home() {
               </form>
             </div>}
             {chatError && <p role="alert">{chatError}</p>}
+            <LiveBroadcast token={token} apiUrl={API_URL} />
             <button className="primary-button" onClick={logout}>
               Sair da conta
             </button>
