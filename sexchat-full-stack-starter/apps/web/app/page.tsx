@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { io, type Socket } from "socket.io-client";
 
 const API_URL = (
   process.env.NEXT_PUBLIC_API_URL || "https://sexchat-290c.onrender.com"
@@ -16,6 +17,74 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [loggedUser, setLoggedUser] = useState("");
+  const [token, setToken] = useState("");
+  const [query, setQuery] = useState("");
+  const [foundUsers, setFoundUsers] = useState<Array<{id: string; displayName: string}>>([]);
+  const [conversations, setConversations] = useState<Array<{id: string; other: {id: string; displayName: string}}>>([]);
+  const [activeConversation, setActiveConversation] = useState("");
+  const [chatMessages, setChatMessages] = useState<Array<{id: string; senderId: string; body: string; createdAt: string}>>([]);
+  const [draft, setDraft] = useState("");
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [chatError, setChatError] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    const connection = io(API_URL, { auth: { token }, transports: ["websocket", "polling"] });
+    connection.on("direct:history", (messages) => setChatMessages(messages));
+    connection.on("direct:message", (message) => setChatMessages(previous => previous.some(m => m.id === message.id) ? previous : [...previous, message]));
+    connection.on("chat:error", (error) => setChatError(error.message));
+    connection.on("connect_error", (error) => setChatError(error.message));
+    setSocket(connection);
+    return () => { connection.disconnect(); setSocket(null); };
+  }, [token]);
+
+  useEffect(() => {
+    if (socket && activeConversation) {
+      setChatMessages([]);
+      socket.emit("direct:join", activeConversation);
+    }
+  }, [socket, activeConversation]);
+
+  async function chatRequest(path: string, options?: RequestInit) {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...options?.headers }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || "Erro na solicitação.");
+    return data;
+  }
+
+  async function loadConversations(authToken: string) {
+    try {
+      const response = await fetch(`${API_URL}/v1/chat/conversations`, { headers: { Authorization: `Bearer ${authToken}` } });
+      if (!response.ok) throw new Error("Não foi possível carregar conversas.");
+      setConversations(await response.json());
+    } catch (error) { setChatError(error instanceof Error ? error.message : "Erro de conexão."); }
+  }
+
+  async function searchUsers() {
+    try { setChatError(""); setFoundUsers(await chatRequest(`/v1/chat/users?q=${encodeURIComponent(query)}`)); }
+    catch (error) { setChatError(error instanceof Error ? error.message : "Erro na pesquisa."); }
+  }
+
+  async function openConversation(otherUserId: string) {
+    try {
+      setChatError("");
+      const conversation = await chatRequest("/v1/chat/conversations", { method: "POST", body: JSON.stringify({ otherUserId }) });
+      setConversations(previous => [conversation, ...previous.filter(c => c.id !== conversation.id)]);
+      setActiveConversation(conversation.id);
+      setFoundUsers([]);
+    } catch (error) { setChatError(error instanceof Error ? error.message : "Erro ao abrir conversa."); }
+  }
+
+  function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (socket?.connected && activeConversation && draft.trim()) {
+      socket.emit("direct:send", { conversationId: activeConversation, message: draft.trim() });
+      setDraft("");
+    } else { setChatError("A conexão do chat não está disponível."); }
+  }
 
   async function submitForm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,6 +126,8 @@ export default function Home() {
         setPassword("");
       } else {
         setLoggedUser(data.user.displayName);
+        setToken(data.token);
+        void loadConversations(data.token);
         setMessage("Login realizado com sucesso!");
         setPassword("");
       }
@@ -71,6 +142,9 @@ export default function Home() {
 
   function logout() {
     setLoggedUser("");
+    setToken("");
+    setConversations([]);
+    setActiveConversation("");
     setEmail("");
     setPassword("");
     setMessage("");
@@ -170,9 +244,26 @@ export default function Home() {
           <div>
             <h2>Olá, {loggedUser}!</h2>
             <p>Sua sessão foi iniciada.</p>
-            <p>
-              O chat e as demais funções ainda precisam ser implementados.
-            </p>
+            <h3>Mensagens privadas</h3>
+            <p>Encontre usuários pelo nome e inicie uma conversa.</p>
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              <input aria-label="Pesquisar usuários" style={fieldStyle} value={query} onChange={e => setQuery(e.target.value)} placeholder="Nome do usuário" />
+              <button className="secondary-button" type="button" onClick={searchUsers}>Buscar</button>
+            </div>
+            {foundUsers.map(user => <button key={user.id} type="button" className="secondary-button" style={{margin:4}} onClick={() => openConversation(user.id)}>{user.displayName}</button>)}
+            <h3>Conversas</h3>
+            {conversations.length === 0 && <p>Nenhuma conversa ainda.</p>}
+            {conversations.map(c => <button type="button" key={c.id} className={activeConversation === c.id ? "primary-button" : "secondary-button"} style={{margin:4}} onClick={() => setActiveConversation(c.id)}>{c.other.displayName}</button>)}
+            {activeConversation && <div style={{marginTop:16}}>
+              <div aria-live="polite" style={{minHeight:160,maxHeight:320,overflowY:"auto",border:"1px solid #514363",padding:12,borderRadius:12}}>
+                {chatMessages.map(m => <p key={m.id} style={{overflowWrap:"anywhere"}}>{m.body}</p>)}
+              </div>
+              <form onSubmit={sendMessage} style={{display:"flex",gap:8,marginTop:12}}>
+                <input aria-label="Sua mensagem" style={fieldStyle} maxLength={2000} value={draft} onChange={e => setDraft(e.target.value)} placeholder="Digite sua mensagem" />
+                <button type="submit" className="primary-button">Enviar</button>
+              </form>
+            </div>}
+            {chatError && <p role="alert">{chatError}</p>}
             <button className="primary-button" onClick={logout}>
               Sair da conta
             </button>
