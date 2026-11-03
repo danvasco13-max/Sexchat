@@ -42,6 +42,78 @@ async function authenticatedUser(req: express.Request, res: express.Response, ne
   } catch { return res.status(401).json({ message: 'Sessão expirada. Entre novamente.' }); }
 }
 
+// Creator onboarding: requests do not grant creator privileges or verified status.
+const creatorApplicationSchema = z.object({
+  bio: z.string().trim().min(20).max(1000),
+  termsAccepted: z.literal(true),
+  adultDeclaration: z.literal(true)
+});
+
+app.get('/v1/creator/application', authenticatedUser, async (_req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: res.locals.userId },
+      select: { role: true, status: true, ageVerification: true, identityVerification: true,
+        profile: { select: { bio: true, applicationStatus: true, applicationNote: true } } } });
+    if (!user) return res.status(404).json({ message: 'Conta não encontrada.' });
+    return res.json(user);
+  } catch { return res.status(500).json({ message: 'Não foi possível consultar sua solicitação.' }); }
+});
+
+app.post('/v1/creator/application', authenticatedUser, async (req, res) => {
+  const parsed = creatorApplicationSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Preencha a descrição (20 a 1000 caracteres) e aceite os termos.' });
+  try {
+    const user = await prisma.user.findUnique({ where: { id: res.locals.userId }, include: { profile: true } });
+    if (!user || user.status === 'SUSPENDED' || user.status === 'CLOSED') return res.status(403).json({ message: 'Conta indisponível.' });
+    if (user.profile?.applicationStatus === 'PENDING' || user.profile?.applicationStatus === 'APPROVED')
+      return res.status(409).json({ message: 'Já existe uma solicitação em análise ou aprovada.' });
+    const profile = await prisma.creatorProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, bio: parsed.data.bio, termsAcceptedAt: new Date(), applicationStatus: 'PENDING' },
+      update: { bio: parsed.data.bio, termsAcceptedAt: new Date(), applicationStatus: 'PENDING', applicationNote: null, applicationReviewedAt: null, applicationReviewerId: null },
+      select: { applicationStatus: true }
+    });
+    return res.status(201).json({ status: profile.applicationStatus, message: 'Solicitação recebida. A verificação de idade e identidade deve ser realizada por um processo seguro antes da aprovação.' });
+  } catch { return res.status(500).json({ message: 'Não foi possível enviar sua solicitação.' }); }
+});
+
+// Admins are provisioned separately. Never expose an endpoint to self-promote to ADMIN.
+app.get('/v1/admin/creator-applications', authenticatedUser, async (_req, res) => {
+  try {
+    const admin = await prisma.user.findUnique({ where: { id: res.locals.userId } });
+    if (admin?.role !== 'ADMIN' || admin.status !== 'ACTIVE') return res.status(403).json({ message: 'Acesso restrito.' });
+    const applications = await prisma.creatorProfile.findMany({ where: { applicationStatus: 'PENDING' },
+      orderBy: { createdAt: 'asc' }, take: 100,
+      select: { userId: true, bio: true, createdAt: true, applicationStatus: true,
+        user: { select: { displayName: true, ageVerification: true, identityVerification: true } } } });
+    return res.json(applications);
+  } catch { return res.status(500).json({ message: 'Não foi possível consultar solicitações.' }); }
+});
+
+const reviewSchema = z.object({ decision: z.enum(['APPROVE', 'REJECT']), note: z.string().trim().max(500).optional() });
+app.post('/v1/admin/creator-applications/:userId/review', authenticatedUser, async (req, res) => {
+  const parsed = reviewSchema.safeParse(req.body);
+  if (!parsed.success || !z.string().cuid().safeParse(req.params.userId).success)
+    return res.status(400).json({ message: 'Dados de revisão inválidos.' });
+  try {
+    const admin = await prisma.user.findUnique({ where: { id: res.locals.userId } });
+    if (admin?.role !== 'ADMIN' || admin.status !== 'ACTIVE') return res.status(403).json({ message: 'Acesso restrito.' });
+    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, include: { profile: true } });
+    if (!user?.profile || user.profile.applicationStatus !== 'PENDING') return res.status(404).json({ message: 'Solicitação pendente não encontrada.' });
+    if (parsed.data.decision === 'APPROVE' && (user.status !== 'ACTIVE' || user.ageVerification !== 'VERIFIED' || user.identityVerification !== 'VERIFIED'))
+      return res.status(409).json({ message: 'A aprovação exige conta ativa e verificação real de idade e identidade já concluída por processo independente.' });
+    await prisma.$transaction(async tx => {
+      await tx.creatorProfile.update({ where: { userId: user.id }, data: {
+        applicationStatus: parsed.data.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+        applicationReviewedAt: new Date(), applicationReviewerId: admin.id, applicationNote: parsed.data.note || null,
+        ...(parsed.data.decision === 'APPROVE' ? { consentReviewAt: new Date() } : {})
+      } });
+      if (parsed.data.decision === 'APPROVE') await tx.user.update({ where: { id: user.id }, data: { role: 'CREATOR' } });
+    });
+    return res.json({ ok: true });
+  } catch { return res.status(500).json({ message: 'Não foi possível revisar a solicitação.' }); }
+});
+
 // Video requires a separate LiveKit deployment. Credentials never reach the browser.
 const videoConfig = () => {
   const url = process.env.LIVEKIT_URL;
