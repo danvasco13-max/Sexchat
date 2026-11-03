@@ -93,12 +93,13 @@ app.get('/v1/admin/creator-applications', authenticatedUser, async (_req, res) =
 const reviewSchema = z.object({ decision: z.enum(['APPROVE', 'REJECT']), note: z.string().trim().max(500).optional() });
 app.post('/v1/admin/creator-applications/:userId/review', authenticatedUser, async (req, res) => {
   const parsed = reviewSchema.safeParse(req.body);
-  if (!parsed.success || !z.string().cuid().safeParse(req.params.userId).success)
+  const targetUserId = req.params.userId;
+  if (!parsed.success || typeof targetUserId !== 'string' || !z.string().cuid().safeParse(targetUserId).success)
     return res.status(400).json({ message: 'Dados de revisão inválidos.' });
   try {
     const admin = await prisma.user.findUnique({ where: { id: res.locals.userId } });
     if (admin?.role !== 'ADMIN' || admin.status !== 'ACTIVE') return res.status(403).json({ message: 'Acesso restrito.' });
-    const user = await prisma.user.findUnique({ where: { id: req.params.userId }, include: { profile: true } });
+    const user = await prisma.user.findUnique({ where: { id: targetUserId }, include: { profile: true } });
     if (!user?.profile || user.profile.applicationStatus !== 'PENDING') return res.status(404).json({ message: 'Solicitação pendente não encontrada.' });
     if (parsed.data.decision === 'APPROVE' && (user.status !== 'ACTIVE' || user.ageVerification !== 'VERIFIED' || user.identityVerification !== 'VERIFIED'))
       return res.status(409).json({ message: 'A aprovação exige conta ativa e verificação real de idade e identidade já concluída por processo independente.' });
@@ -457,4 +458,3 @@ const port = Number(
 server.listen(port, () => {
   console.log(`Sexchat API listening on port ${port}`);
 });
-
