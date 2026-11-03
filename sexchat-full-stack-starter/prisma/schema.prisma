@@ -80,15 +80,17 @@ model User {
   directMessages         DirectMessage[]
 }
 
+
 model CreatorProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  bio             String?  @db.VarChar(1000)
-  avatarUrl       String?
-  payoutStatus    String   @default("NOT_CONFIGURED")
-  termsAcceptedAt DateTime?
-  consentReviewAt DateTime?
-  createdAt       DateTime @default(now())
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  bio               String?  @db.VarChar(1000)
+  avatarUrl         String?
+  payoutStatus      String   @default("NOT_CONFIGURED")
+  applicationStatus String   @default("PENDING")
+  termsAcceptedAt   DateTime?
+  consentReviewAt   DateTime?
+  createdAt         DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
