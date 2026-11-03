@@ -18,6 +18,13 @@ type Application = {
 export default function AdminPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [token, setToken] = useState("");
+  useEffect(() => {
+  const savedToken = sessionStorage.getItem("sexchat_admin_session");
+
+  if (savedToken) {
+    setToken(savedToken);
+  }
+}, []);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
