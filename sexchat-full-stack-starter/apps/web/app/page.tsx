@@ -129,6 +129,9 @@ export default function Home() {
       } else {
         setLoggedUser(data.user.displayName);
         setToken(data.token);
+        
+sessionStorage.setItem("sexchat_admin_session", data.token);
+
         void loadConversations(data.token);
         setMessage("Login realizado com sucesso!");
         setPassword("");
@@ -151,6 +154,8 @@ export default function Home() {
     setPassword("");
     setMessage("");
     setMode("login");
+    sessionStorage.removeItem("sexchat_admin_session");
+
   }
 
   return (
